@@ -1,62 +1,74 @@
 #!/bin/bash
+
+# Exit on error
 set -e
 
-# Configuration
-PROJECT_ID="negatives-app"
-BUCKET_NAME="www.sjsidor.com"
-REGION="us-central1"
-DOMAIN="sjsidor.com"
+# Check if gcloud is installed
+if ! command -v gcloud &> /dev/null; then
+    echo "Google Cloud SDK is not installed. Please install it first:"
+    echo "https://cloud.google.com/sdk/docs/install"
+    exit 1
+fi
+
+# Check if user is authenticated
+if ! gcloud auth list --filter=status:ACTIVE --format="get(account)" &> /dev/null; then
+    echo "Please authenticate with Google Cloud first:"
+    echo "gcloud auth login"
+    exit 1
+fi
+
+# Get project ID
+PROJECT_ID=$(gcloud config get-value project)
+if [ -z "$PROJECT_ID" ]; then
+    echo "No project ID set. Please set it first:"
+    echo "gcloud config set project YOUR_PROJECT_ID"
+    exit 1
+fi
+
+echo "Setting up GCP resources for project: $PROJECT_ID"
 
 # Enable required APIs
 echo "Enabling required APIs..."
 gcloud services enable storage.googleapis.com
-gcloud services enable compute.googleapis.com
+gcloud services enable cloudresourcemanager.googleapis.com
 
 # Create Cloud Storage bucket
-echo "Creating Cloud Storage bucket..."
-gsutil mb -p $PROJECT_ID -l $REGION gs://$BUCKET_NAME || true
+BUCKET_NAME="www.sjsidor.com"
+echo "Creating Cloud Storage bucket: $BUCKET_NAME"
+gsutil mb -p $PROJECT_ID -l us-central1 gs://$BUCKET_NAME
 
 # Configure bucket for website hosting
 echo "Configuring bucket for website hosting..."
-gsutil web set -m index.html -e 404.html gs://$BUCKET_NAME
+gsutil web set -m index.html gs://$BUCKET_NAME
+
+# Set bucket permissions
+echo "Setting bucket permissions..."
 gsutil iam ch allUsers:objectViewer gs://$BUCKET_NAME
 
-# Create load balancer backend bucket
-echo "Creating backend bucket..."
-gcloud compute backend-buckets create $BUCKET_NAME \
-  --gcs-bucket-name=$BUCKET_NAME \
-  --enable-cdn || true
+# Create service account
+SA_NAME="frontend-deployer"
+SA_EMAIL="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+echo "Creating service account: $SA_EMAIL"
+gcloud iam service-accounts create $SA_NAME \
+    --display-name="Frontend Deployer" \
+    --description="Service account for deploying frontend to Cloud Storage"
 
-# Create SSL certificate
-echo "Creating SSL certificate..."
-gcloud compute ssl-certificates create $DOMAIN-cert \
-  --domains=$DOMAIN,www.$DOMAIN \
-  --global || true
+# Grant service account permissions
+echo "Granting service account permissions..."
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SA_EMAIL" \
+    --role="roles/storage.objectViewer"
 
-# Create URL map
-echo "Creating URL map..."
-gcloud compute url-maps create $DOMAIN-urlmap \
-  --default-backend-bucket=$BUCKET_NAME || true
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SA_EMAIL" \
+    --role="roles/storage.objectCreator"
 
-# Create target HTTPS proxy
-echo "Creating target HTTPS proxy..."
-gcloud compute target-https-proxies create $DOMAIN-https-proxy \
-  --url-map=$DOMAIN-urlmap \
-  --ssl-certificates=$DOMAIN-cert || true
+# Create and download service account key
+echo "Creating service account key..."
+gcloud iam service-accounts keys create key.json \
+    --iam-account=$SA_EMAIL
 
-# Create forwarding rules
-echo "Creating forwarding rules..."
-gcloud compute forwarding-rules create $DOMAIN-https \
-  --global \
-  --target-https-proxy=$DOMAIN-https-proxy \
-  --ports=443 || true
-
-gcloud compute forwarding-rules create $DOMAIN-http \
-  --global \
-  --target-http-proxy=$DOMAIN-http-proxy \
-  --ports=80 || true
-
-echo "Setup complete! Now you need to:"
-echo "1. Configure your domain's DNS settings to point to the load balancer IP"
-echo "2. Wait for the SSL certificate to be provisioned"
-echo "3. Deploy your frontend code using the GitHub Actions workflow" 
+echo "Setup complete! Please add the following secrets to your GitHub repository:"
+echo "1. GCP_PROJECT_ID: $PROJECT_ID"
+echo "2. GCP_BUCKET_NAME: $BUCKET_NAME"
+echo "3. GCP_SA_KEY: (contents of key.json)" 
