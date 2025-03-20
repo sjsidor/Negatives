@@ -44,4 +44,4 @@ backend/uploads/*
 
 # Service account key
 key.json
-service-account.json 
+service-account.json key.json
