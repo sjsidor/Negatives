@@ -33,7 +33,7 @@ gcloud services enable storage.googleapis.com
 gcloud services enable cloudresourcemanager.googleapis.com
 
 # Create Cloud Storage bucket
-BUCKET_NAME="www.sjsidor.com"
+BUCKET_NAME="sjsidor-photo-gallery"
 echo "Creating Cloud Storage bucket: $BUCKET_NAME"
 gsutil mb -p $PROJECT_ID -l us-central1 gs://$BUCKET_NAME
 
