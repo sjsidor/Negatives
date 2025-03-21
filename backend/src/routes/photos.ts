@@ -3,28 +3,17 @@ import { Pool } from 'pg';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { Storage } from '@google-cloud/storage';
+import { db } from '../db';
+import { Photo } from '../types';
 
-const router = express.Router();
+export const photosRouter = express.Router();
 
 // Configure multer for file uploads
-const upload = multer({
-  dest: 'uploads/', // Store files in an uploads directory
-  limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    console.log('Received file:', file.originalname); // Log the filename
-    // Accept images only
-    if (!file.originalname.match(/\.(jpg|jpeg|png|gif|tif|tiff)$/i)) {
-      console.log('File type not allowed:', file.originalname); // Log rejected files
-      return cb(new Error('Only image files are allowed!'));
-    }
-    cb(null, true);
-  }
-});
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Get all photos
-router.get('/', async (req, res) => {
+photosRouter.get('/', async (req, res) => {
   try {
     const pool = new Pool({
       user: process.env.DB_USER,
@@ -44,7 +33,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get a single photo
-router.get('/:id', async (req, res) => {
+photosRouter.get('/:id', async (req, res) => {
   try {
     const pool = new Pool({
       user: process.env.DB_USER,
@@ -69,7 +58,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Upload a new photo
-router.post('/', upload.single('photo'), async (req, res) => {
+photosRouter.post('/', upload.single('photo'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
@@ -105,7 +94,7 @@ router.post('/', upload.single('photo'), async (req, res) => {
 });
 
 // Delete a photo
-router.delete('/:id', async (req, res) => {
+photosRouter.delete('/:id', async (req, res) => {
   try {
     const pool = new Pool({
       user: process.env.DB_USER,
@@ -137,6 +126,4 @@ router.delete('/:id', async (req, res) => {
     console.error('Error deleting photo:', error);
     res.status(500).json({ error: 'Failed to delete photo' });
   }
-});
-
-export default router; 
+}); 

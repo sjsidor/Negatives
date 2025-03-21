@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import sharp from 'sharp';
 import fs from 'fs';
-import photoRoutes from './routes/photos';
+import { photosRouter } from './routes/photos';
 
 // Load environment variables
 dotenv.config();
@@ -138,8 +138,21 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
   }
 }));
 
-// Routes
-app.use('/api/photos', photoRoutes);
+// Serve static files from the public directory (frontend build)
+const staticDir = process.env.STATIC_DIR || path.join(__dirname, '../public');
+app.use(express.static(staticDir));
+
+// API routes
+app.use('/api/photos', photosRouter);
+
+// Serve index.html for all other routes (client-side routing)
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    res.status(404).json({ error: 'Not found' });
+  } else {
+    res.sendFile(path.join(staticDir, 'index.html'));
+  }
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -149,4 +162,5 @@ app.get('/health', (req, res) => {
 // Start server
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+  console.log(`Static files being served from: ${staticDir}`);
 }); 

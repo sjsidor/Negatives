@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./key.json:/app/key.json:ro
+    environment:
+      - NODE_ENV=development
+      - GOOGLE_CLOUD_PROJECT=negatives-454301
+      - GOOGLE_CLOUD_STORAGE_BUCKET=photo-gallery-images-negatives-454301
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/key.json
+    command: npm run dev 
