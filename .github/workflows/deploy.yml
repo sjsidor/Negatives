@@ -1,0 +1,74 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE_NAME: negatives-app
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Authenticate Docker
+      run: gcloud auth configure-docker
+
+    - name: Build and Push Image
+      id: build
+      run: |
+        echo "🏗️ Building Docker image..."
+        docker build \
+          --build-arg VITE_API_URL=https://api.sjsidor.com \
+          --build-arg VITE_SITE_URL=https://sjsidor.com \
+          -t "gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
+          .
+        echo "📦 Pushing to Container Registry..."
+        docker push "gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA"
+        echo "✅ Build and push complete"
+
+    - name: Deploy to Cloud Run
+      id: deploy
+      run: |
+        echo "🚀 Deploying to Cloud Run..."
+        gcloud run deploy $SERVICE_NAME \
+          --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+          --platform managed \
+          --region $REGION \
+          --allow-unauthenticated \
+          --set-env-vars="VITE_API_URL=https://api.sjsidor.com,VITE_SITE_URL=https://sjsidor.com,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_STORAGE_BUCKET=${{ secrets.GCP_BUCKET_NAME }}"
+
+    - name: Verify Deployment
+      run: |
+        echo "🔍 Verifying deployment..."
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)')
+        echo "✨ Service deployed successfully!"
+        echo "📝 Deployment Info:"
+        echo "  • Service URL: $SERVICE_URL"
+        echo "  • Main domain: https://sjsidor.com"
+        echo "  • API domain: https://api.sjsidor.com"
+        echo "  • Region: $REGION"
+        echo "  • Revision: $GITHUB_SHA" 
